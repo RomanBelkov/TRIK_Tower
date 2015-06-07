@@ -1,0 +1,216 @@
+/* The MIT License (MIT)
+*
+* Copyright (c) 2015 Ksenia Gonta, Roman Belkov
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+* THE SOFTWARE.
+*/
+
+var first1 = 0;
+var first2 = 0;
+var second1 = 0;
+var second2 = 0;
+var third1 = 0;
+var third2 = 0;
+var fourth1 = 0;
+var fourth2 = 0;
+var fifth1 = 0;
+var fifth2 = 0;
+var six1 = 0;
+var six2 = 0;
+var max = 50;
+var coef = 1.5 * 0.25;
+var maxPower = 70;
+var diff;
+var red = 0;
+var blue = 0;
+var green = 0;
+var redprev = 0;
+var blueprev = 0;
+var greenprev = 0;
+var redcurr = 0;
+var bluecurr = 0;
+var greencurr = 0;
+
+const maxAccAngle   = 90;
+const maxScaleAngle = 60;
+const scaleConst    = 20;
+const magicMass     = 7;
+var currentAngle    = 0;
+
+function limit (angle, border) {
+	if (angle > border) { return border; } else if (angle < -border) {return -border;} else {return angle;}
+}
+
+function scale (x) {
+	return Math.floor(limit(x, maxScaleAngle) / scaleConst);
+}
+
+brick.keys().buttonPressed.connect(
+	function(code, state) {
+		if (state == 0) 
+			return;
+
+		if (code == KeysEnum.Enter)
+		{
+			brick.lineSensor("video0").detect();
+			return;
+		}
+
+		if (code == KeysEnum.Power)
+		{
+			brick.lineSensor("video0").stop();
+			script.wait(1000);	
+			script.stop();
+			script.quit();
+		}
+	}
+);
+
+brick.lineSensor("video0").init(true);
+script.wait(2000);
+script.system('v4l2-ctl -d "/dev/video2" --set-ctrl white_balance_temperature_auto=1');
+brick.lineSensor("video0").detect();
+
+//detect by times
+script.repeat(30000, function() { brick.lineSensor("video0").detect(); });
+
+//servo rotation depending on object sensor
+script.repeat(50, function() {
+
+	sensorX = brick.lineSensor("video0").read()[0];
+	sensorMass = brick.lineSensor("video0").read()[2];
+
+	if (sensorMass > magicMass) 
+	{
+		currentAngle = limit(currentAngle, maxAccAngle) + scale(sensorX);
+		//print("Power to set is " + currentAngle);
+		brick.motor("C1").setPower(-currentAngle);
+	}
+});
+
+//color business
+script.repeat(100, function() {
+	//red
+	first2 = brick.sensor(A1).read();
+	if (first2 > max){
+		red = 0;
+		green = 0;
+		first1 = 0;
+	} else {
+		diff = (first2 - first1) ;
+		green = green + (diff ) * coef;
+		red = red + (diff ) * coef;
+		first1 = first2;
+	}
+	
+
+	//red blue
+	second2 = brick.sensor(A2).read();
+	if (second2 > max){
+		blue = 0;
+		second1 = 0;
+	} else {
+		diff = (second2 - second1) ;
+		red = red + (diff ) * coef;
+		blue = blue + (diff ) * coef;
+		second1 = second2;
+	}
+
+
+	//blue
+	third2 = brick.sensor(A3).read();
+	if (third2 > max){
+		third1 = 0;
+	} else {
+		diff = (third2 - third1) ;
+		blue = blue + (diff ) * coef * 2;
+		third1 = third2;
+	}
+
+	//blue green
+	fourth2 = brick.sensor(A4).read();
+	if (fourth2 > max){
+		fourth1 = 0;
+	} else {
+		diff = (fourth2 - fourth1) ;
+		blue = blue + (diff ) * coef;
+		green = green + (diff ) * coef;
+		third1 = third2;
+	}
+
+	//green
+	fifth2 = brick.sensor(A5).read();
+	if (fifth2 > max){
+		fifth1 = 0;
+	} else {
+		diff = (fifth2 - fifth1) ;
+		green = green + (diff ) * coef * 2;
+		fifth1 = fifth2;
+	}	
+
+	//green red
+	six2 = brick.sensor(A6).read();
+	if (six2 > max){
+		six1 = 0;
+	} else {
+		diff = (six2 - six1) ;
+		green = green + (diff ) * coef;
+		red = red + (diff ) * coef;
+		six1 = six2;
+	}
+
+
+
+	redcurr = (red + redprev) / 2;
+	bluecurr = (blue + blueprev) / 2;
+	greencurr = (green + greenprev) / 2;
+
+	redprev = red;
+	blueprev = blue;
+	greenprev = green;
+
+	brick.motor(M1).setPower(100);
+
+	if (red == 0){
+		brick.motor(M2).setPower(0);
+	}
+
+	else { 
+		brick.motor(M2).setPower((maxPower - redcurr));
+	}
+
+
+	if (blue == 0){
+		brick.motor(M4).setPower(0);
+	}
+
+	else { 
+		brick.motor(M4).setPower((maxPower - bluecurr));
+	}
+
+	if (green == 0){
+		brick.motor(M3).setPower(0);
+	}
+
+	else { 
+		brick.motor(M3).setPower((maxPower - greencurr));
+	}
+});
+
+script.run();
