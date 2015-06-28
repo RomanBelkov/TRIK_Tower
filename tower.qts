@@ -35,7 +35,7 @@ var six1 = 0;
 var six2 = 0;
 var max = 50;
 var coef = 1.5 * 0.25;
-var maxPower = 70;
+var maxPower = 100;
 var diff;
 var red = 0;
 var blue = 0;
@@ -47,11 +47,67 @@ var redcurr = 0;
 var bluecurr = 0;
 var greencurr = 0;
 
+//Colors' hue for rounding the result from sensor
+const hueRed = 0;
+const hueYellow = 60;
+const hueLime = 120;
+const hueCyan = 180;
+const hueBlue = 240;
+const hueMagenta = 300;
+var hueArray = [hueRed, hueYellow, hueLime, hueCyan, hueBlue, hueMagenta];
+
+var hue;
+var rgbObj;
+
 const maxAccAngle   = 90;
-const maxScaleAngle = 60;
-const scaleConst    = 20;
+const maxScaleAngle = 75;
+const scaleConst    = 15;
 const magicMass     = 7;
 var currentAngle    = 0;
+var autonomFlag     = true;
+
+var topServo = brick.motor("C1").setPower;
+var redLED   = brick.motor("M2").setPower;
+var greenLED = brick.motor("M3").setPower;
+var blueLED  = brick.motor("M4").setPower;
+
+function HSVtoRGB(h, s, v) {
+    var r, g, b, i, f, p, q, t;
+    if (h && s === undefined && v === undefined) {
+        s = h.s, v = h.v, h = h.h;
+    }
+    i = Math.floor(h * 6);
+    f = h * 6 - i;
+    p = v * (1 - s);
+    q = v * (1 - f * s);
+    t = v * (1 - (1 - f) * s);
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+    return {
+        r: Math.floor(r * 255),
+        g: Math.floor(g * 255),
+        b: Math.floor(b * 255)
+    };
+}
+
+function roundColor (sensorHue) {
+	var resultingIndex = 0;
+	var delta = Math.abs(hueRed - sensorHue);
+	for (var i = 1; i < hueArray.length; i++) {
+		var temp = Math.abs(hueArray[i] - sensorHue);
+		if (temp < delta) {
+			delta = temp;
+			resultingIndex = i;
+		}
+	};
+	return resultingIndex;
+}
 
 function limit (angle, border) {
 	if (angle > border) { return border; } else if (angle < -border) {return -border;} else {return angle;}
@@ -83,16 +139,30 @@ brick.keys().buttonPressed.connect(
 );
 
 brick.lineSensor("video0").init(true);
+brick.motor(M1).setPower(100);
 script.wait(2000);
 script.system('v4l2-ctl -d "/dev/video2" --set-ctrl white_balance_temperature_auto=1');
-brick.lineSensor("video0").detect();
+//brick.lineSensor("video0").detect();
 
 //detect by times
-script.repeat(30000, function() { brick.lineSensor("video0").detect(); });
+script.repeat(20000, function() { 
+	autonomFlag = true;		
+	brick.lineSensor("video0").detect(); 
+	script.wait(150);
+
+	if (autonomFlag == true) {
+		hue        = brick.lineSensor("video0").getDetectParameters()[0];
+		//saturation = brick.lineSensor("video0").getDetectParameters()[1];
+		rgbObj = HSVtoRGB((roundColor(hue)) / 360, 1, 1);
+		print("r " + rgbObj.r + " g " + rgbObj.g + " b " + rgbObj.b); 
+		redLED(rgbObj.r);
+		greenLED(rgbObj.g);
+		blueLED(rgbObj.b);
+	}
+});
 
 //servo rotation depending on object sensor
 script.repeat(50, function() {
-
 	sensorX = brick.lineSensor("video0").read()[0];
 	sensorMass = brick.lineSensor("video0").read()[2];
 
@@ -100,7 +170,7 @@ script.repeat(50, function() {
 	{
 		currentAngle = limit(currentAngle, maxAccAngle) + scale(sensorX);
 		//print("Power to set is " + currentAngle);
-		brick.motor("C1").setPower(-currentAngle);
+		topServo(-currentAngle);
 	}
 });
 
@@ -108,36 +178,40 @@ script.repeat(50, function() {
 script.repeat(100, function() {
 	//red
 	first2 = brick.sensor(A1).read();
+	//print("A1 " + first2);
 	if (first2 > max){
 		red = 0;
 		green = 0;
 		first1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (first2 - first1) ;
 		green = green + (diff ) * coef;
 		red = red + (diff ) * coef;
 		first1 = first2;
 	}
 	
-
 	//red blue
 	second2 = brick.sensor(A2).read();
+	//print("A2 " + second2);
 	if (second2 > max){
 		blue = 0;
 		second1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (second2 - second1) ;
 		red = red + (diff ) * coef;
 		blue = blue + (diff ) * coef;
 		second1 = second2;
 	}
 
-
 	//blue
 	third2 = brick.sensor(A3).read();
+	//print("A3 " + third2);
 	if (third2 > max){
 		third1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (third2 - third1) ;
 		blue = blue + (diff ) * coef * 2;
 		third1 = third2;
@@ -145,9 +219,11 @@ script.repeat(100, function() {
 
 	//blue green
 	fourth2 = brick.sensor(A4).read();
+	//print("A4 " + fourth2);
 	if (fourth2 > max){
 		fourth1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (fourth2 - fourth1) ;
 		blue = blue + (diff ) * coef;
 		green = green + (diff ) * coef;
@@ -156,9 +232,11 @@ script.repeat(100, function() {
 
 	//green
 	fifth2 = brick.sensor(A5).read();
+	//print("A5 " + fifth2);
 	if (fifth2 > max){
 		fifth1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (fifth2 - fifth1) ;
 		green = green + (diff ) * coef * 2;
 		fifth1 = fifth2;
@@ -166,50 +244,49 @@ script.repeat(100, function() {
 
 	//green red
 	six2 = brick.sensor(A6).read();
+	//print("A6 " + six2);
 	if (six2 > max){
 		six1 = 0;
 	} else {
+		autonomFlag = false;
 		diff = (six2 - six1) ;
 		green = green + (diff ) * coef;
 		red = red + (diff ) * coef;
 		six1 = six2;
 	}
 
-
-
-	redcurr = (red + redprev) / 2;
-	bluecurr = (blue + blueprev) / 2;
-	greencurr = (green + greenprev) / 2;
+	redcurr = Math.floor((red + redprev) / 2);
+	bluecurr = Math.floor((blue + blueprev) / 2);
+	greencurr = Math.floor((green + greenprev) / 2);
 
 	redprev = red;
 	blueprev = blue;
 	greenprev = green;
 
-	brick.motor(M1).setPower(100);
+	print("auto is " + autonomFlag);
+	print("red to set" + redcurr);
+	print("green to set" + greencurr);
+	print("blue to set" + bluecurr);
 
-	if (red == 0){
-		brick.motor(M2).setPower(0);
-	}
+	if (autonomFlag == false)
+	{
+		if (red == 0) {
+			redLED(0);
+		} else { 
+			redLED(maxPower - redcurr);
+		}
 
-	else { 
-		brick.motor(M2).setPower((maxPower - redcurr));
-	}
+		if (blue == 0){
+			blueLED(0);
+		} else { 
+			blueLED(maxPower - bluecurr);
+		}
 
-
-	if (blue == 0){
-		brick.motor(M4).setPower(0);
-	}
-
-	else { 
-		brick.motor(M4).setPower((maxPower - bluecurr));
-	}
-
-	if (green == 0){
-		brick.motor(M3).setPower(0);
-	}
-
-	else { 
-		brick.motor(M3).setPower((maxPower - greencurr));
+		if (green == 0){
+			greenLED(0);
+		} else { 
+			greenLED(maxPower - greencurr);
+		}
 	}
 });
 
